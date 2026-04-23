@@ -11,6 +11,7 @@ library(bayesplot)  # Diagnostics
 library(loo)        # LOOCV Model comparison
 library(tidyverse)  # Data manipulation
 library(corrplot)   # Correlation Matrix Visualization
+library(car)        # VIF
 ```
 
 # Exploratory Data Analysis
@@ -36,7 +37,12 @@ corrplot(cov,
          number.cex = 0.7)
 ```
 
-To avoid collinearity, we choose the PH, NLP as the regressors.
+```{r}
+fit_vif <- lm(GY ~ Season + PH + IFP + NLP, data = dat)
+vif(fit_vif)
+```
+
+We choose Season, PH, IFP, and NLP as the regressors.
 
 # Fitting
 
@@ -63,32 +69,9 @@ summary(fit.2)
 According to the outputs, all ESS values are larger than the standard diagnostic threshold of 1000, we can safely conclude that both models are reliable.
 And since all parameters have $\hat{R}=1$, it implies that the independent MCMC chains have reached a perfect consensus and successfully converged, signaling that the sampling process is stable and the results are mathematically reliable.
 
-
-```{r}
-# trace plots
-mcmc_trace(fit, c("b_Season2", "b_PH", "b_IFP", "b_NLP"))
-```
-
-```{r}
-mcmc_trace(fit.2, c("b_Season2", "b_PH", "b_IFP", "b_NLP", "b_Season2:PH", "b_Season2:IFP", "b_Season2:NLP"))
-```
-
-Both trace plots have good patterns, which perfect mixing and horizontal stationarity across all four chains. This implies that the MCMC algorithm successfully converged to a stable posterior distribution.
-
-# Posterior Predictive Check
-
-```{r}
-# Verify that the fitted values
-pp_check(fit, ndraws = 100)
-```
-
-```{r}
-pp_check(fit.2, ndraws = 100)
-```
-
-The fitted values match the distribution of the original distributions, hence both models fit well.
-
 # Model Selection
+
+We use LOOCV to calculate the Expected Log-Pointwise Predictive Density (ELPD), which is the accuract score.
 
 ```{r}
 set.seed(123)
@@ -96,60 +79,90 @@ set.seed(123)
 # Using LOOCV to compare two models
 loo.1 <- loo(fit)
 loo.2 <- loo(fit.2)
-comparison_results <- loo_compare(loo.1, loo.2)
-comparison_results
+loo_compare(loo.1, loo.2)
 ```
 
-By checking the $Ratio = \frac{|elpd\_diff|}{se\_diff}$, the ratio of fit > fit.2, which implies a better performance. Hence we should keep the interaction term.
-
-# Inference & Visualization
+By checking the $Ratio = \frac{|elpd\_diff|}{se\_diff} = 1.95$ of fit, the accuracy of fit.2 significantly better than fit.
 
 ```{r}
 # 95% CI for the coefficients
 fixef(fit.2)
 ```
 
+Since the CI of $\beta_{PH}$ and $\beta_{Season2:PH}$ include 0, indicating there is no significant effect at 0.05 level of significant, we need to refit a simpler model.
+
+```{r}
+set.seed(123)
+fit.3 <- brm(GY ~ Season * (IFP + NLP), data = dat)
+summary(fit.3)
+```
+
+```{r}
+set.seed(123)
+loo.3 <- loo(fit.3)
+loo_compare(loo.2, loo.3)
+```
+
+```{r}
+# 95% CI for the coefficients
+fixef(fit.3)
+```
+
+Checking the outputs, we can say fit.3 is a better model than fit.2.
+
+# Posterior Predictive Check
+
+```{r}
+pp_check(fit.3, ndraws = 100)
+```
+
+# Visualization
+
+```{r}
+mcmc_trace(fit.3, c("b_Season2", "b_IFP", "b_NLP", "b_Season2:IFP", "b_Season2:NLP"))
+```
+
 ```{r}
 # posterior distributions of the coefficients
-mcmc_areas(fit.2, "b_Season2", prob = 0.95)
+mcmc_areas(fit.3, "b_Season2", prob = 0.95)
 ```
 
 ```{r}
-mcmc_areas(fit.2, "b_PH", prob = 0.95)
+mcmc_areas(fit.3, "b_IFP", prob = 0.95)
 ```
 
 ```{r}
-mcmc_areas(fit.2, "b_IFP", prob = 0.95)
+mcmc_areas(fit.3, "b_NLP", prob = 0.95)
 ```
 
 ```{r}
-mcmc_areas(fit.2, "b_NLP", prob = 0.95)
+mcmc_areas(fit.3, "b_Season2:IFP", prob = 0.95)
 ```
 
 ```{r}
-mcmc_areas(fit.2, "b_Season2:PH", prob = 0.95)
+mcmc_areas(fit.3, "b_Season2:NLP", prob = 0.95)
 ```
 
 ```{r}
-mcmc_areas(fit.2, "b_Season2:IFP", prob = 0.95)
+bayes_R2(fit.3)
 ```
 
-```{r}
-mcmc_areas(fit.2, "b_Season2:NLP", prob = 0.95)
-```
-
-```{r}
-bayes_R2(fit.2)
-```
-
+# Conclusion
 
 We can conclude 
 
 Our final model is:
+
+In Season 1:
 $$
-GY_i \sim N(\mu_{GY_i}, 478.11)
+\text{GY} = 1759.63 + 76.29(\text{IFP}) + 7.10(\text{NLP})
+$$
+In Season 2:
+$$
+\text{GY} = (1759.63 + 1549.42) + (76.29 - 80.87)\text{IFP} + (7.10 - 4.35)\text{NLP}
+$$
+$$
+\text{GY} = 3309.05 - 4.58(\text{IFP}) + 2.75(\text{NLP})
 $$
 
-$$
-\mu_{GY_i} = 
-$$
+with SE(Residual) = 478.95.
