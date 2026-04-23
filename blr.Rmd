@@ -1,0 +1,155 @@
+---
+title: "Bayesian Linear Regression"
+author: "Hangting Lu"
+date: "2026-04-22"
+output: html_document
+---
+
+```{r}
+library(brms)       # Bayesian Regression Model
+library(bayesplot)  # Diagnostics
+library(loo)        # LOOCV Model comparison
+library(tidyverse)  # Data manipulation
+library(corrplot)   # Correlation Matrix Visualization
+```
+
+# Exploratory Data Analysis
+
+```{r}
+dat <- read.csv("data.csv")
+dim(dat)[1]
+```
+
+```{r}
+dat$Season <- factor(dat$Season)
+
+# select the continuous variables
+num <- dat %>% 
+  select(PH, IFP, NLP, NGP, NGL, NS, MHG, GY)
+
+# check the correlation matrix
+cov <- cor(num)
+
+corrplot(cov, 
+         addCoef.col = "black",
+         tl.col = "red",
+         number.cex = 0.7)
+```
+
+To avoid collinearity, we choose the PH, NLP as the regressors.
+
+# Fitting
+
+```{r}
+set.seed(123)
+
+# BRM, using Markov Chain Monte Carlo Method
+fit <- brm(GY ~  Season + PH + IFP + NLP, data = dat)
+
+# interaction model
+fit.2 <- brm(GY ~ Season * (PH + IFP + NLP), data = dat)
+```
+
+# Diagnostics
+
+```{r}
+summary(fit)
+```
+
+```{r}
+summary(fit.2)
+```
+
+According to the outputs, all ESS values are larger than the standard diagnostic threshold of 1000, we can safely conclude that both models are reliable.
+And since all parameters have $\hat{R}=1$, it implies that the independent MCMC chains have reached a perfect consensus and successfully converged, signaling that the sampling process is stable and the results are mathematically reliable.
+
+
+```{r}
+# trace plots
+mcmc_trace(fit, c("b_Season2", "b_PH", "b_IFP", "b_NLP"))
+```
+
+```{r}
+mcmc_trace(fit.2, c("b_Season2", "b_PH", "b_IFP", "b_NLP", "b_Season2:PH", "b_Season2:IFP", "b_Season2:NLP"))
+```
+
+Both trace plots have good patterns, which perfect mixing and horizontal stationarity across all four chains. This implies that the MCMC algorithm successfully converged to a stable posterior distribution.
+
+# Posterior Predictive Check
+
+```{r}
+# Verify that the fitted values
+pp_check(fit, ndraws = 100)
+```
+
+```{r}
+pp_check(fit.2, ndraws = 100)
+```
+
+The fitted values match the distribution of the original distributions, hence both models fit well.
+
+# Model Selection
+
+```{r}
+set.seed(123)
+
+# Using LOOCV to compare two models
+loo.1 <- loo(fit)
+loo.2 <- loo(fit.2)
+comparison_results <- loo_compare(loo.1, loo.2)
+comparison_results
+```
+
+By checking the $Ratio = \frac{|elpd\_diff|}{se\_diff}$, the ratio of fit > fit.2, which implies a better performance. Hence we should keep the interaction term.
+
+# Inference & Visualization
+
+```{r}
+# 95% CI for the coefficients
+fixef(fit.2)
+```
+
+```{r}
+# posterior distributions of the coefficients
+mcmc_areas(fit.2, "b_Season2", prob = 0.95)
+```
+
+```{r}
+mcmc_areas(fit.2, "b_PH", prob = 0.95)
+```
+
+```{r}
+mcmc_areas(fit.2, "b_IFP", prob = 0.95)
+```
+
+```{r}
+mcmc_areas(fit.2, "b_NLP", prob = 0.95)
+```
+
+```{r}
+mcmc_areas(fit.2, "b_Season2:PH", prob = 0.95)
+```
+
+```{r}
+mcmc_areas(fit.2, "b_Season2:IFP", prob = 0.95)
+```
+
+```{r}
+mcmc_areas(fit.2, "b_Season2:NLP", prob = 0.95)
+```
+
+```{r}
+bayes_R2(fit.2)
+```
+
+
+We can conclude 
+
+Our final model is:
+$$
+GY_i \sim N(\mu_{GY_i}, 478.11)
+$$
+
+$$
+\mu_{GY_i} = 
+$$
