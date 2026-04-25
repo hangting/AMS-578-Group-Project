@@ -1,6 +1,6 @@
 ---
 title: "Bayesian Linear Regression"
-author: "Hangting Lu"
+author: "Kevin Hazelton, Xuanwei Li, Jung Jae Park, Hangting Lu, Samuel Iskhakov"
 date: "2026-04-22"
 output: html_document
 ---
